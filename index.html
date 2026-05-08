@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aligner: A straightforward and direct approach.</title>
+    <style>
+        :root {
+            --bg: #1A1C23;
+            --card-bg: #252833;
+            --coral: #DF7366;
+            --green: #6EB077;
+            --blue: #418BCA;
+            --white: #ffffff;
+            --text-main: #ffffff;
+            --text-sub: #A0A2AB;
+            --bar-w: 40px;
+            --gap: 12px;
+            --shadow-soft: 0 10px 30px rgba(0,0,0,0.4);
+            --shadow-lift: 0 30px 60px rgba(0,0,0,0.6), 0 0 15px rgba(223, 115, 102, 0.1);
+            --smooth-curve: cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        /* TRAVA TOTAL DO MOUSE ORIGINAL */
+        * { cursor: none !important; }
+
+        body {
+            background: var(--bg);
+            font-family: -apple-system, system-ui, sans-serif;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* CURSOR CARTOON - CAMADA SUPREMA */
+        #custom-cursor {
+            position: fixed; 
+            width: 28px; 
+            height: 28px;
+            z-index: 2000001; 
+            pointer-events: none !important; 
+            left: -50px; 
+            top: -50px; 
+            transition: none;
+        }
+
+        /* SIDEBAR (EDITIONS PANEL) */
+        #editions-panel {
+            position: fixed; top: 0; left: -320px; width: 300px; height: 100%;
+            background: var(--card-bg); z-index: 1000000;
+            box-shadow: 20px 0 60px rgba(0,0,0,0.8);
+            transition: left 0.5s var(--smooth-curve);
+            padding: 40px 25px; border-right: 1px solid rgba(255,255,255,0.1);
+            box-sizing: border-box;
+        }
+        #editions-panel.open { left: 0; }
+
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+        .close-btn { background: none; border: none; padding: 10px; }
+        .close-btn svg { fill: var(--text-sub); width: 20px; transition: fill 0.3s; }
+        .close-btn:hover svg { fill: white; }
+
+        .edition-item {
+            padding: 20px; border-radius: 18px; background: rgba(255,255,255,0.03);
+            margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.05);
+            transition: all 0.3s var(--smooth-curve);
+            display: block; text-decoration: none;
+        }
+        .edition-item:hover { background: rgba(255,255,255,0.08); transform: translateX(10px); border-color: var(--coral); }
+        .edition-item h4 { margin: 0; color: white; font-size: 1.1rem; }
+        .edition-item p { margin: 5px 0 0; color: var(--text-sub); font-size: 0.85rem; }
+
+        /* CONTAINER BORRADO */
+        #blur-container {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: filter 0.5s var(--smooth-curve);
+        }
+        body.menu-open #blur-container { filter: blur(15px); pointer-events: none; }
+
+        /* TOP CONTROLS */
+        .top-ctrls { position: absolute; top: 25px; left: 25px; display: flex; gap: 15px; z-index: 2000; }
+        .icon-btn {
+            width: 50px; height: 50px; border-radius: 18px;
+            border: 2px solid rgba(255,255,255,0.08); background: var(--card-bg);
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: var(--shadow-soft); transition: transform 0.3s;
+        }
+        .icon-btn svg { fill: white; width: 24px; }
+
+        .mode-btn {
+            position: absolute; top: 25px; right: 25px; height: 52px; padding: 0 30px; 
+            border-radius: 30px; border: none; color: white; font-weight: 700;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4); transition: background 0.5s ease;
+            z-index: 2000;
+        }
+        body.mode-manual .mode-btn { background: var(--coral); }
+        body.mode-auto .mode-btn { background: var(--green); }
+        body.mode-challenge .mode-btn { background: var(--blue); }
+
+        /* HEADER */
+        .header { text-align: center; height: 160px; display: flex; flex-direction: column; justify-content: flex-end; margin-bottom: 25px; }
+        h1 { font-size: 3.5rem; margin: 0; color: white; letter-spacing: -1.5px; }
+        p { color: var(--text-sub); margin: 8px 0 0; font-size: 1.15rem; }
+        #timer-display { font-size: 3.8rem; font-weight: 900; color: white; margin-bottom: 5px; height: 75px; display: none; }
+        body.mode-challenge #timer-display { display: block; }
+        #timer-display.low-time { color: var(--coral); animation: shake 0.2s infinite; }
+
+        /* ACTION SLOT */
+        .action-slot { height: 150px; display: flex; align-items: center; justify-content: center; width: 100%; }
+        .reset-btn { background: var(--white); color: #000; border: none; padding: 12px 30px; border-radius: 25px; font-weight: 700; box-shadow: var(--shadow-soft); }
+        body.mode-auto #reset-btn, body.mode-challenge #reset-btn { display: none; }
+        .challenge-setup { display: none; flex-direction: column; align-items: center; gap: 12px; background: var(--card-bg); padding: 25px; border-radius: 24px; border: 2px solid rgba(255,255,255,0.1); width: 240px; }
+        body.mode-challenge .challenge-setup { display: flex; }
+
+        /* STAGE */
+        .stage { position: relative; height: 320px; border-bottom: 2px solid rgba(255,255,255,0.1); margin-top: 30px; }
+        .bar-node { position: absolute; bottom: 0px; width: var(--bar-w); display: flex; flex-direction: column; align-items: center; padding-bottom: 45px; transition: left 0.5s var(--smooth-curve); }
+        .bar { width: 100%; background: var(--white); border-radius: 50px; box-shadow: var(--shadow-soft); transition: all 0.3s; }
+        .bar-node.active-bar { z-index: 500; }
+        .bar-node.active-bar .bar { background: var(--coral); transform: translateY(-25px) scale(1.06); box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+        .bar-node.manual-dragging { transition: none !important; }
+        .label { position: absolute; bottom: 15px; font-size: 0.85rem; font-weight: 700; color: #5c5e69; }
+        .bar.success { background: var(--green) !important; }
+        .bar.fail { background: #444 !important; filter: grayscale(1); opacity: 0.4; }
+
+        /* BOTTOM BAR */
+        .bottom-ctrl-bar {
+            margin-top: 40px; display: flex; align-items: center; gap: 20px;
+            background: var(--card-bg); padding: 12px 30px; border-radius: 40px;
+            border: 1px solid rgba(255,255,255,0.1); width: 420px;
+        }
+        .progress-container { flex: 1; height: 8px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; position: relative; }
+        .progress-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--coral); width: 0%; transition: width 0.3s var(--smooth-curve); }
+        #progress-text { font-family: monospace; font-weight: bold; font-size: 1.1rem; color: white; min-width: 50px; text-align: right; }
+
+        @keyframes textAppear { from { opacity: 0; transform: translateY(8px); filter: blur(4px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
+        .animate-text { animation: textAppear 0.7s var(--smooth-curve) forwards; }
+        @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(3px); } 50% { transform: translateX(-3px); } 100% { transform: translateX(0); } }
+        .confetti { position: fixed; z-index: 999999; pointer-events: none; }
+        @keyframes confetti-burst { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) rotate(var(--dr)); opacity: 0; scale: 0.5; } }
+    </style>
+</head>
+<body class="mode-manual">
+
+    <div id="custom-cursor">
+        <svg viewBox="0 0 24 24" fill="none" width="28" height="28">
+            <path d="M4.5 3V17.5L9.2 13.3L13 21L16.5 19.3L12.8 11.7L18.5 11.5L4.5 3Z" 
+                  fill="white" stroke="black" stroke-width="2.2" stroke-linejoin="round"/>
+        </svg>
+    </div>
+
+    <div id="editions-panel">
+        <div class="panel-header">
+            <h2 style="color: white; margin: 0; letter-spacing: -1px;">Editions</h2>
+            <button class="close-btn" onclick="toggleMenu()">
+                <svg viewBox="0 0 24 24"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg>
+            </button>
+        </div>
+        <div class="edition-item active" onclick="toggleMenu()">
+            <h4>Standard Sort</h4>
+            <p>The core sorting challenge.</p>
+        </div>
+        <a href="https://lorodev420.github.io/Aligner-Audio-Engine/" class="edition-item">
+            <h4>Audio Engine</h4>
+            <p>MP3 Frequency Visualizer.</p>
+        </a>
+    </div>
+
+    <div class="top-ctrls">
+        <button class="icon-btn" id="menu-toggle" onclick="toggleMenu()">
+            <svg viewBox="0 0 24 24"><path d="M12,16A2,2 0 0,1 14,18A2,2 0 0,1 12,20A2,2 0 0,1 10,18A2,2 0 0,1 12,16M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10M12,4A2,2 0 0,1 14,6A2,2 0 0,1 12,8A2,2 0 0,1 10,6A2,2 0 0,1 12,4Z"/></svg>
+        </button>
+        <button class="icon-btn" id="mute-toggle">
+            <svg id="sound-on-icon" viewBox="0 0 24 24"><path d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.85 14,18.71V20.77C18.03,19.86 21,16.28 21,12C21,7.72 18.03,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16.02C15.5,15.29 16.5,13.77 16.5,12M3,9V15H7L12,20V4L7,9H3Z"/></svg>
+            <svg id="sound-off-icon" viewBox="0 0 24 24" style="display:none;"><path d="M12,4L9.91,6.09L12,8.18V4M14.77,12L16.5,13.73C16.74,13.19 16.89,12.61 16.89,12C16.89,10.23 15.89,8.71 14.39,7.97V10.18L14.77,12M19,12C19,13.41 18.66,14.74 18.04,15.91L19.57,17.44C20.47,15.84 21,14 21,12C21,7.72 18.03,4.14 14,3.23V5.29C16.89,6.15 19,8.83 19,12M4.27,3L3,4.27L7.73,9H3V15H7L12,20V13.27L16.25,17.52C15.58,18.04 14.83,18.45 14,18.7V20.76C15.38,20.45 16.63,19.82 17.69,18.95L19.73,21L21,19.73L12,10.73L4.27,3Z"/></svg>
+        </button>
+    </div>
+
+    <button class="mode-btn" id="mode-toggle">Mode: Manual</button>
+
+    <div id="blur-container">
+        <div class="header">
+            <div id="timer-display">00.0s</div>
+            <h1 id="main-title">Aligner</h1>
+            <p id="sub-title"></p>
+        </div>
+
+        <div class="action-slot">
+            <button class="reset-btn" id="reset-btn" onclick="init()">Generate New Challenge</button>
+            <div class="challenge-setup" id="challenge-setup">
+                <label style="font-weight: 700; color: white;">Set Time: <span id="time-val">10</span>s</label>
+                <input type="range" id="time-slider" min="1" max="20" value="10" style="width: 100%;">
+                <button class="reset-btn" style="width: 100%;" onclick="startChallenge()">Start Challenge!</button>
+            </div>
+        </div>
+
+        <div class="stage" id="stage"></div>
+
+        <div class="bottom-ctrl-bar">
+            <div class="progress-container"><div class="progress-fill" id="progress-fill"></div></div>
+            <div id="progress-text">0%</div>
+        </div>
+    </div>
+
+    <script>
+        const stage = document.getElementById('stage'), cursor = document.getElementById('custom-cursor');
+        const modeBtn = document.getElementById('mode-toggle'), menuPanel = document.getElementById('editions-panel');
+        const progressFill = document.getElementById('progress-fill'), progressText = document.getElementById('progress-text');
+        const timerDisplay = document.getElementById('timer-display');
+
+        let barElements = [], modeIndex = 0; 
+        const modes = ['manual', 'auto', 'challenge'];
+        let isMuted = false, isAuto = false, isChallenge = false;
+        let timeLeft = 0, timerInterval, autoLoopTimeout;
+
+        // AUDIO ENGINE - MENOS ESTOURADO
+        const synth = new (window.AudioContext || window.webkitAudioContext)();
+        function playPop(f=250, dur=0.15) { 
+            if(!isMuted) { 
+                if(synth.state==='suspended') synth.resume(); 
+                const o=synth.createOscillator(), g=synth.createGain(); 
+                o.type='sine'; 
+                o.frequency.value=f; 
+                // Gain reduzido para 0.08 e decaimento exponencial suave
+                g.gain.setValueAtTime(0.08, synth.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.0001, synth.currentTime + dur); 
+                o.connect(g); 
+                g.connect(synth.destination); 
+                o.start(); 
+                o.stop(synth.currentTime + dur); 
+            } 
+        }
+
+        window.addEventListener('mousemove', e => { cursor.style.left = e.clientX + 'px'; cursor.style.top = e.clientY + 'px'; });
+
+        function toggleMenu() {
+            const isOpen = menuPanel.classList.toggle('open');
+            document.body.classList.toggle('menu-open', isOpen);
+        }
+
+        modeBtn.onclick = () => {
+            modeIndex = (modeIndex + 1) % 3;
+            const m = modes[modeIndex];
+            document.body.className = 'mode-' + m;
+            isAuto = m === 'auto'; isChallenge = m === 'challenge';
+            clearInterval(timerInterval); timerDisplay.classList.remove('low-time');
+            modeBtn.innerText = `Mode: ${m.charAt(0).toUpperCase() + m.slice(1)}`;
+            updatePhrases(m); init();
+        };
+
+        function updatePhrases(m) {
+            const t = document.getElementById('main-title'), s = document.getElementById('sub-title');
+            if(m==='manual') { t.innerText = "Aligner"; s.innerText = "like actually manual, that's your cursor who make it"; }
+            else if(m==='auto') { t.innerText = "Aligner"; s.innerText = "sit back and relax, I'm doing it for you"; }
+            else { t.innerText = "Aligner"; s.innerText = "Beat the clock to stay in line."; updateText(timerDisplay, "00.0s"); }
+        }
+
+        function updateText(el, newText) { if (el.innerText === newText) return; el.classList.remove('animate-text'); void el.offsetWidth; el.innerText = newText; el.classList.add('animate-text'); }
+
+        document.getElementById('mute-toggle').onclick = () => { isMuted = !isMuted; document.getElementById('sound-on-icon').style.display = isMuted ? 'none' : 'block'; document.getElementById('sound-off-icon').style.display = isMuted ? 'block' : 'none'; };
+        document.getElementById('time-slider').oninput = e => document.getElementById('time-val').innerText = e.target.value;
+
+        function init() {
+            clearTimeout(autoLoopTimeout); clearInterval(timerInterval);
+            stage.innerHTML = ''; stage.style.width = '612px';
+            const data = Array.from({length: 12}, () => Math.floor(Math.random() * 85) + 10);
+            if (data.every((v,i) => i===0 || v >= data[i-1])) data.sort(() => Math.random()-0.5);
+            barElements = data.map((val, i) => {
+                const node = document.createElement('div');
+                node.className = 'bar-node'; node.style.left = (i * 52) + 'px';
+                node.innerHTML = `<div class="bar" style="height: ${val * 3.0}px"></div><div class="label">${val}</div>`;
+                stage.appendChild(node); setupDrag(node);
+                return { node, val, index: i };
+            });
+            updateProgress();
+            if (isAuto) autoLoopTimeout = setTimeout(autoSortLoop, 600);
+        }
+
+        function startChallenge() {
+            init(); isChallenge = true; timeLeft = parseInt(document.getElementById('time-slider').value);
+            timerInterval = setInterval(() => {
+                timeLeft -= 0.1; timerDisplay.innerText = Math.max(0, timeLeft).toFixed(1) + "s";
+                if(timeLeft <= 5 && timeLeft > 0) timerDisplay.classList.add('low-time');
+                if(timeLeft <= 0) { clearInterval(timerInterval); document.querySelectorAll('.bar').forEach(b => b.classList.add('fail')); updateText(document.getElementById('main-title'), "TIME OVER!"); setTimeout(init, 2000); }
+            }, 100);
+        }
+
+        function setupDrag(node) {
+            let startX = 0, dragging = null;
+            node.onpointerdown = (e) => {
+                if(isAuto || (isChallenge && timeLeft <= 0) || document.querySelector('.success')) return;
+                dragging = barElements.find(i => i.node === node);
+                startX = e.clientX - node.offsetLeft - stage.getBoundingClientRect().left;
+                node.setPointerCapture(e.pointerId);
+                node.classList.add('active-bar', 'manual-dragging'); playPop(280);
+            };
+            node.onpointermove = (e) => {
+                if(!dragging) return;
+                let x = e.clientX - startX - stage.getBoundingClientRect().left;
+                x = Math.max(0, Math.min(stage.offsetWidth - 40, x));
+                node.style.left = x + 'px';
+                let target = Math.round(x / 52);
+                if(target !== dragging.index) reorder(dragging.index, target);
+            };
+            node.onpointerup = () => {
+                if(!dragging) return;
+                node.classList.remove('active-bar', 'manual-dragging');
+                node.style.left = dragging.index * 52 + 'px';
+                dragging = null; playPop(440); checkWin();
+            };
+        }
+
+        function reorder(from, to) {
+            const dir = to > from ? 1 : -1;
+            for (let i = from; i !== to; i += dir) {
+                const next = barElements.find(it => it.index === i + dir);
+                const curr = barElements.find(it => it.index === i);
+                next.index = i; curr.index = i + dir;
+                next.node.style.left = next.index * 52 + 'px';
+            }
+            playPop(350, 0.05); updateProgress();
+        }
+
+        function updateProgress() {
+            const cur = [...barElements].sort((a,b) => a.index - b.index).map(i => i.val);
+            const sorted = [...cur].sort((a,b) => a-b);
+            const correct = cur.reduce((a, v, i) => a + (v === sorted[i] ? 1 : 0), 0);
+            const pct = Math.round((correct / 12) * 100);
+            progressFill.style.width = pct + "%"; progressText.innerText = pct + "%";
+        }
+
+        async function autoSortLoop() {
+            if (!isAuto) return;
+            let current = [...barElements].sort((a,b) => a.index - b.index);
+            let unsorted = null;
+            for(let k=1; k<current.length; k++) if(current[k].val < current[k-1].val) { unsorted = current[k]; break; }
+            if (!unsorted) { checkWin(); return; }
+            let targetIdx = 0;
+            for(let k=0; k<unsorted.index; k++) if(current[k].val > unsorted.val) { targetIdx = k; break; }
+            unsorted.node.classList.add('active-bar'); playPop(280);
+            await new Promise(r => autoLoopTimeout = setTimeout(r, 400));
+            reorder(unsorted.index, targetIdx);
+            unsorted.node.style.left = (targetIdx * 52) + 'px';
+            await new Promise(r => autoLoopTimeout = setTimeout(r, 500));
+            unsorted.node.classList.remove('active-bar'); playPop(440);
+            autoSortLoop();
+        }
+
+        function checkWin() {
+            const vals = [...barElements].sort((a,b) => a.index - b.index).map(i => i.val);
+            if(vals.every((v, i) => i === 0 || v >= vals[i-1])) {
+                clearInterval(timerInterval);
+                document.querySelectorAll('.bar').forEach(b => b.classList.add('success'));
+                [261, 329, 392, 523].forEach((f, i) => setTimeout(() => playPop(f, 0.4), i * 100));
+                spawnConfetti();
+                if(isAuto) setTimeout(init, 4000);
+                return true;
+            }
+            return false;
+        }
+
+        function spawnConfetti() {
+            const stageRect = stage.getBoundingClientRect();
+            for (let i = 0; i < 80; i++) {
+                const c = document.createElement('div');
+                c.className = 'confetti';
+                const dx = (Math.random() - 0.5) * 1000, dy = (Math.random() * -800) - 200, dr = Math.random() * 1440;
+                c.style.backgroundColor = ['#DF7366', '#6EB077', '#F4B41A', '#418BCA'][Math.floor(Math.random()*4)];
+                c.style.left = (stageRect.left + stageRect.width/2) + 'px'; c.style.top = (stageRect.top + stageRect.height/2) + 'px';
+                c.style.setProperty('--dx', dx + 'px'); c.style.setProperty('--dy', dy + 'px'); c.style.setProperty('--dr', dr + 'deg');
+                c.style.width = '8px'; c.style.height = '8px';
+                c.style.animation = `confetti-burst 2s cubic-bezier(0.1, 0.8, 0.3, 1) forwards`;
+                document.body.appendChild(c); setTimeout(() => c.remove(), 2000);
+            }
+        }
+
+        init();
+        updatePhrases('manual');
+    </script>
+</body>
+</html>
